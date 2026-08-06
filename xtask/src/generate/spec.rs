@@ -805,6 +805,21 @@ pub fn resolve_feature_list(
     resolve_feature_list_from_package(&meta, root, selection)
 }
 
+/// Concrete feature leaves the canonical registry keeps out of
+/// `Selection::Dist`.
+///
+/// Leanness tests assert against this derived set instead of naming a sentinel
+/// feature, so promoting a channel into `dist_extra_features` stays a
+/// one-line registry edit and never requires touching a test.
+#[cfg(test)]
+pub(crate) fn features_outside_dist(manifest_dir: &Path) -> anyhow::Result<Vec<String>> {
+    let dist = resolve_feature_list(manifest_dir, &Selection::Dist)?;
+    Ok(resolve_feature_list(manifest_dir, &Selection::All)?
+        .into_iter()
+        .filter(|feature| !dist.contains(feature))
+        .collect())
+}
+
 fn workspace_root_package(
     meta: &cargo_metadata::Metadata,
 ) -> anyhow::Result<&cargo_metadata::Package> {
@@ -1408,9 +1423,15 @@ mod tests {
 
     #[test]
     fn dist_matches_lean_release_contract() {
+        let meta = cargo_metadata::MetadataCommand::new()
+            .manifest_path(root().join("Cargo.toml"))
+            .no_deps()
+            .exec()
+            .unwrap();
+        let pkg = workspace_root_package(&meta).unwrap();
         let features = resolve_feature_list(&root(), &Selection::Dist).unwrap();
         let mut expected = resolve_feature_list(&root(), &Selection::Full).unwrap();
-        expected.extend(["channel-matrix", "channel-lark", "whatsapp-web"].map(str::to_owned));
+        expected.extend(dist_extra_features(pkg).unwrap());
         expected.sort();
         expected.dedup();
         assert_eq!(features, expected);
@@ -1556,7 +1577,9 @@ mod tests {
         .unwrap();
         assert_eq!(host, dist);
 
-        assert!(exclude_features(host, &["channel-slack".to_owned()]).is_err());
+        let outside_dist = features_outside_dist(&root()).unwrap();
+        let not_in_dist = outside_dist.first().expect("dist is not the kitchen sink");
+        assert!(exclude_features(host, std::slice::from_ref(not_in_dist)).is_err());
         let (target, excluded) = exclusions.iter().next().unwrap();
         let resolved =
             resolve_feature_list_for_target(&root(), &Selection::Dist, Some(target)).unwrap();

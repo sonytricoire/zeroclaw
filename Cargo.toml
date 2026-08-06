@@ -200,6 +200,7 @@ dist_extra_features = [
     "channel-matrix",
     "channel-lark",
     "channel-git",
+    "channel-slack",
     "whatsapp-web",
 ]
 

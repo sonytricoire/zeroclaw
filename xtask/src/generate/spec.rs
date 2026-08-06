@@ -1431,11 +1431,14 @@ mod tests {
         let features = resolve_feature_list(&root(), &Selection::Dist).unwrap();
         assert!(features.contains(&"channel-git".to_string()));
         let mut expected = resolve_feature_list(&root(), &Selection::Full).unwrap();
+        // Fork deviation: `channel-slack` is shipped in `dist` here. The
+        // commit that added it records why this must not go upstream.
         expected.extend(
             [
                 "channel-matrix",
                 "channel-lark",
                 "channel-git",
+                "channel-slack",
                 "whatsapp-web",
             ]
             .map(str::to_owned),

@@ -31,15 +31,21 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  # Resolves to sonytricoire/zeroclaw on the fork, so the image never has to be
-  # hardcoded and a re-fork under another account stays correct.
-  IMAGE: ${{ github.repository }}
+  # Derived from the repository so a re-fork under another account stays
+  # correct, but deliberately NOT `${{ github.repository }}` on its own.
+  #
+  # A GHCR package named exactly after a fork resolves through the upstream
+  # fork network, where the actor holds only read, and GITHUB_TOKEN is refused:
+  #
+  #   denied: permission_denied: write_package
+  #
+  # Verified by pushing one alpine layer under both names from the same job:
+  # `sonytricoire/zeroclaw` was denied, `sonytricoire/zeroclaw-slack` pushed.
+  # Any name outside the fork network works; this one also says what it is.
+  IMAGE: ${{ github.repository }}-slack
   # Which docker-tags.toml entry to build. `dist` is the selection this fork
   # patches to include channel-slack, and the only one that ships arm64.
   STEM: dist
-  # Marks the image as a fork build so it is never mistaken for upstream's
-  # identically-named `dist` tag, which does not carry channel-slack.
-  TAG_SUFFIX: -slack
 
 jobs:
   matrix:
@@ -114,12 +120,14 @@ jobs:
           push: true
           # Straight from the generated matrix: the Dockerfile cross-compiles to
           # arm64 on the native amd64 builder, so no QEMU step is needed.
+          # Tags mirror upstream's names; the `-slack` package name is what
+          # keeps these apart from upstream's Slack-less `dist` images.
           platforms: ${{ matrix.platforms }}
           build-args: |
             ZEROCLAW_CARGO_FLAGS=${{ matrix.flags }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ matrix.floating_tag }}${{ env.TAG_SUFFIX }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ matrix.pinned_tag }}${{ env.TAG_SUFFIX }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ matrix.floating_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ matrix.pinned_tag }}
             ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ github.ref_name }}
 
   publish-debian:
@@ -165,10 +173,9 @@ jobs:
           platforms: linux/arm64
           build-args: |
             ZEROCLAW_CARGO_FLAGS=${{ matrix.flags }}
-          # `-debian-slack` keeps this distinct from both the fork's distroless
-          # `-slack` tags and upstream's shell-equipped `-debian` tags, which
-          # carry no Slack.
+          # `-debian` mirrors upstream's name for the shell-equipped variant;
+          # the `-slack` package name is what keeps the two apart.
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ matrix.floating_tag }}-debian${{ env.TAG_SUFFIX }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ matrix.pinned_tag }}-debian${{ env.TAG_SUFFIX }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ matrix.floating_tag }}-debian
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ matrix.pinned_tag }}-debian
             ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ github.ref_name }}-debian
